@@ -10,6 +10,8 @@
     "example:basic": "node examples/basic-usage.js",
     "example:detailed": "node examples/detailed-usage.js",
     "example:tracker": "node examples/stock-tracker.js",
+    "example:advanced": "node examples/advanced-features.js",
+    "show:all-methods": "node examples/all-available-methods.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
