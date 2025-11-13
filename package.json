@@ -1,0 +1,23 @@
+{
+  "name": "test-api-nse",
+  "version": "1.0.0",
+  "description": "Testing stock-nse-india API integration",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node examples/basic-usage.js",
+    "example:basic": "node examples/basic-usage.js",
+    "example:detailed": "node examples/detailed-usage.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:40100/git/muhammad-abel/test-api-nse"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "stock-nse-india": "^1.2.2"
+  }
+}
