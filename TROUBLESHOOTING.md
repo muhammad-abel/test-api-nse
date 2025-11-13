@@ -333,25 +333,57 @@ When scraper fails:
 
 ## 🎯 Summary
 
-**3 Major Issues Fixed:**
+**4 Major Issues Fixed:**
 
-1. ✅ **Date Parsing** - Added parseDate() utility for DD-MMM-YYYY format
-2. ✅ **Index Methods** - Replaced getIndexDetails with getEquityStockIndices
+1. ✅ **Date Parsing** - Added parseDate() utility for DD-MMM-YYYY format with fallback fields
+2. ✅ **Index Methods** - Replaced getEquityStockIndices() with getAllIndices() (fixed library bug)
 3. ✅ **Market Movers** - Replaced getTopGainers/Losers with getPreOpenMarketData
+4. ✅ **Historical Date Fields** - Added fallback logic for multiple date field names
+
+**Key Improvements:**
+- Fixed library bug where `getEquityStockIndices()` without parameter crashes
+- Added multiple date field fallback (CH_TIMESTAMP, TIMESTAMP, mTIMESTAMP, date)
+- Better error logging showing available fields for debugging
+- Created diagnostic script for local environment testing
 
 **Files Modified:**
-- `src/services/scraper.js` - Main fixes
+- `src/services/scraper.js` - Main fixes with fallback logic
+- `.env.example` - Enabled features by default
+- Added `diagnose-local.js` - Diagnose API responses in your local environment
 - Added `check-methods.js` - Verify API methods
 - Added `test-api-response.js` - Test API responses
 
 **Next Steps:**
-1. Run `npm run scraper:once` to verify all fixes
-2. Check data in MongoDB
-3. Run `npm run query:data` to verify stored data
-4. Deploy with `npm run scraper:start` for continuous scraping
+
+1. **Run diagnostics to see actual API response structure:**
+   ```bash
+   node diagnose-local.js
+   ```
+   Share the output if you still see errors.
+
+2. **Update your .env file:**
+   ```bash
+   cp .env.example .env
+   # Edit .env to set your MONGODB_URI and configure symbols
+   ```
+
+3. **Run scraper once to test:**
+   ```bash
+   npm run scraper:once
+   ```
+
+4. **Check data in MongoDB:**
+   ```bash
+   npm run query:data
+   ```
+
+5. **Deploy for continuous scraping:**
+   ```bash
+   npm run scraper:start
+   ```
 
 ---
 
 **Last Updated:** 2024-11-13
-**Version:** 1.1.0
-**Status:** ✅ All Issues Resolved
+**Version:** 1.2.0
+**Status:** ✅ Library Bugs Fixed, Ready for Local Testing

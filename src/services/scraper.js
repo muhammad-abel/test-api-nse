@@ -171,10 +171,15 @@ class NseScraper {
 
       for (const record of data) {
         try {
-          // Parse date properly
-          const parsedDate = this.parseDate(record.CH_TIMESTAMP);
+          // Try multiple date field names (API response structure varies)
+          const dateStr = record.CH_TIMESTAMP || record.TIMESTAMP || record.mTIMESTAMP || record.date;
+
+          const parsedDate = this.parseDate(dateStr);
           if (!parsedDate) {
-            logger.warn(`Skipping record with invalid date: ${record.CH_TIMESTAMP}`);
+            // Log first failed record for debugging
+            if (savedDocs.length === 0) {
+              logger.warn(`Skipping record - date field not found. Available fields: ${Object.keys(record).join(', ')}`);
+            }
             continue;
           }
 
@@ -221,7 +226,12 @@ class NseScraper {
       return savedDocs;
 
     } catch (error) {
-      logger.error(`Failed to scrape historical data for ${symbol}:`, error.message);
+      const is403 = error.message && error.message.includes('403');
+      if (is403) {
+        logger.warn(`Historical data unavailable for ${symbol} (NSE API blocked - 403)`);
+      } else {
+        logger.error(`Failed to scrape historical data for ${symbol}:`, error.message);
+      }
       this.stats.failed++;
       return [];
     }
@@ -232,10 +242,11 @@ class NseScraper {
     try {
       logger.info(`Scraping index details for ${indexName}...`);
 
-      // Use getEquityStockIndices to get all indices, then filter
+      // Use getAllIndices instead of getEquityStockIndices() without parameter
+      // This fixes the library bug where getEquityStockIndices() expects a parameter
       const allIndices = await this.retryOperation(
-        () => this.nse.getEquityStockIndices(),
-        `getEquityStockIndices()`
+        () => this.nse.getAllIndices(),
+        `getAllIndices()`
       );
 
       if (!allIndices || !allIndices.data) {
@@ -243,10 +254,11 @@ class NseScraper {
         return null;
       }
 
-      // Find the specific index
-      const indexData = allIndices.data.find(idx =>
-        idx.index && idx.index.toUpperCase() === indexName.toUpperCase()
-      );
+      // Find the specific index (try multiple field names)
+      const indexData = allIndices.data.find(idx => {
+        const idxName = idx.index || idx.indexSymbol || idx.key || '';
+        return idxName.toUpperCase() === indexName.toUpperCase();
+      });
 
       if (!indexData) {
         logger.warn(`Index ${indexName} not found in data`);
@@ -284,7 +296,16 @@ class NseScraper {
       return saved;
 
     } catch (error) {
-      logger.error(`Failed to scrape index ${indexName}:`, error.message);
+      const is403 = error.message && error.message.includes('403');
+      const isLibraryBug = error.message && error.message.includes('toUpperCase');
+
+      if (is403) {
+        logger.warn(`Index data unavailable for ${indexName} (NSE API blocked - 403)`);
+      } else if (isLibraryBug) {
+        logger.warn(`Index scraping not working (library bug) - Consider disabling ENABLE_INDEX_SCRAPING`);
+      } else {
+        logger.error(`Failed to scrape index ${indexName}:`, error.message);
+      }
       this.stats.failed++;
       return null;
     }
@@ -434,32 +455,73 @@ class NseScraper {
     logger.info('=== Starting complete scrape ===');
     logger.info(`Symbols: ${symbols.length}, Indices: ${indices.length}`);
 
-    this.stats = { success: 0, failed: 0, total: 0 };
+    // Check feature flags
+    const enableEquity = process.env.ENABLE_EQUITY_SCRAPING !== 'false';
+    const enableHistorical = process.env.ENABLE_HISTORICAL_SCRAPING !== 'false';
+    const enableIndex = process.env.ENABLE_INDEX_SCRAPING !== 'false';
+    const enableMarketMovers = process.env.ENABLE_MARKET_MOVERS !== 'false';
+
+    logger.info(`Features: Equity=${enableEquity}, Historical=${enableHistorical}, Index=${enableIndex}, MarketMovers=${enableMarketMovers}`);
+
+    this.stats = { success: 0, failed: 0, total: 0, skipped: 0 };
     const startTime = Date.now();
 
     // Scrape equities
-    for (const symbol of symbols) {
-      this.stats.total++;
-      await this.scrapeEquityDetails(symbol);
-      await this.scrapeHistoricalData(symbol, parseInt(process.env.HISTORICAL_DAYS || 30));
-      await this.scrapeCorporateActions(symbol);
+    if (enableEquity && symbols.length > 0) {
+      for (const symbol of symbols) {
+        this.stats.total++;
+        await this.scrapeEquityDetails(symbol);
+
+        if (enableHistorical) {
+          await this.scrapeHistoricalData(symbol, parseInt(process.env.HISTORICAL_DAYS || 30));
+        }
+
+        await this.scrapeCorporateActions(symbol);
+      }
+    } else {
+      logger.info('Equity scraping disabled or no symbols configured');
+      this.stats.skipped += symbols.length;
     }
 
     // Scrape indices
-    for (const indexName of indices) {
-      this.stats.total++;
-      await this.scrapeIndexDetails(indexName);
+    if (enableIndex && indices.length > 0) {
+      for (const indexName of indices) {
+        this.stats.total++;
+        await this.scrapeIndexDetails(indexName);
+      }
+    } else {
+      logger.info('Index scraping disabled or no indices configured');
+      this.stats.skipped += indices.length;
     }
 
     // Scrape market movers
-    this.stats.total++;
-    await this.scrapeMarketMovers();
+    if (enableMarketMovers) {
+      this.stats.total++;
+      await this.scrapeMarketMovers();
+    } else {
+      logger.info('Market movers scraping disabled');
+      this.stats.skipped++;
+    }
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
 
     logger.info('=== Scrape completed ===');
     logger.info(`Duration: ${duration}s`);
-    logger.info(`Success: ${this.stats.success}, Failed: ${this.stats.failed}, Total: ${this.stats.total}`);
+    logger.info(`Success: ${this.stats.success}, Failed: ${this.stats.failed}, Skipped: ${this.stats.skipped}, Total: ${this.stats.total}`);
+
+    // Check for high failure rate and provide suggestions
+    if (this.stats.failed > this.stats.success && this.stats.failed > 5) {
+      logger.warn('\n⚠️  HIGH FAILURE RATE DETECTED');
+      logger.warn('Possible causes:');
+      logger.warn('  - NSE API blocking (Error 403) - try VPN with India IP');
+      logger.warn('  - Library bugs - check for "toUpperCase" or "undefined" errors');
+      logger.warn('  - Invalid data format - run: node diagnose-local.js');
+      logger.warn('Suggestions:');
+      logger.warn('  1. Run diagnostics: node diagnose-local.js');
+      logger.warn('  2. Increase REQUEST_DELAY_MS to 2000-3000ms');
+      logger.warn('  3. Run during market hours (9:15-15:30 IST)');
+      logger.warn('  4. Temporarily disable failing features in .env\n');
+    }
 
     return this.stats;
   }
