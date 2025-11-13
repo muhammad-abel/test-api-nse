@@ -157,12 +157,18 @@ class NseScraper {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
 
-      const data = await this.retryOperation(
+      const response = await this.retryOperation(
         () => this.nse.getEquityHistoricalData(symbol, { start: startDate, end: endDate }),
         `getEquityHistoricalData(${symbol})`
       );
 
-      if (!data || data.length === 0) {
+      // Handle response structure: could be array or {data: [...], meta: {...}}
+      let data = response;
+      if (response && response.data && Array.isArray(response.data)) {
+        data = response.data;
+      }
+
+      if (!data || !Array.isArray(data) || data.length === 0) {
         logger.warn(`No historical data found for ${symbol}`);
         return [];
       }

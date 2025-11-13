@@ -14,27 +14,58 @@ async function diagnoseHistoricalData() {
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - 7);
 
-    const data = await nse.getEquityHistoricalData('RELIANCE', {
+    const response = await nse.getEquityHistoricalData('RELIANCE', {
       start: startDate,
       end: endDate
     });
 
-    if (data && data.length > 0) {
-      console.log('✓ Success! Got', data.length, 'records');
-      console.log('\nFirst record fields:', Object.keys(data[0]));
-      console.log('\nDate fields found:');
-      console.log('  - CH_TIMESTAMP:', data[0].CH_TIMESTAMP);
-      console.log('  - TIMESTAMP:', data[0].TIMESTAMP);
-      console.log('  - mTIMESTAMP:', data[0].mTIMESTAMP);
-      console.log('  - date:', data[0].date);
+    console.log('\n📦 Response structure:');
+    console.log('  Type:', typeof response);
+    console.log('  Is Array:', Array.isArray(response));
+    console.log('  Top-level keys:', Object.keys(response).join(', '));
 
-      console.log('\nFull first record:');
-      console.log(JSON.stringify(data[0], null, 2));
+    // Check if response has .data property
+    if (response && response.data) {
+      console.log('\n✓ Found response.data property!');
+      console.log('  Type of response.data:', typeof response.data);
+      console.log('  Is Array:', Array.isArray(response.data));
+      console.log('  Length:', response.data.length);
+
+      if (Array.isArray(response.data) && response.data.length > 0) {
+        console.log('\n📋 First record in response.data:');
+        console.log('  Fields:', Object.keys(response.data[0]).join(', '));
+
+        console.log('\n📅 Date fields found:');
+        console.log('  - CH_TIMESTAMP:', response.data[0].CH_TIMESTAMP);
+        console.log('  - TIMESTAMP:', response.data[0].TIMESTAMP);
+        console.log('  - mTIMESTAMP:', response.data[0].mTIMESTAMP);
+        console.log('  - date:', response.data[0].date);
+
+        console.log('\n💰 Price fields:');
+        console.log('  - CH_OPENING_PRICE:', response.data[0].CH_OPENING_PRICE);
+        console.log('  - CH_CLOSING_PRICE:', response.data[0].CH_CLOSING_PRICE);
+        console.log('  - CH_TRADE_HIGH_PRICE:', response.data[0].CH_TRADE_HIGH_PRICE);
+
+        console.log('\n📄 Full first record:');
+        console.log(JSON.stringify(response.data[0], null, 2));
+      }
+    } else if (Array.isArray(response) && response.length > 0) {
+      console.log('\n✓ Response is direct array');
+      console.log('  Length:', response.length);
+      console.log('  First record fields:', Object.keys(response[0]).join(', '));
+      console.log('\n📄 Full first record:');
+      console.log(JSON.stringify(response[0], null, 2));
     } else {
-      console.log('✗ No data returned');
+      console.log('✗ No data returned or unexpected structure');
+    }
+
+    if (response && response.meta) {
+      console.log('\n📊 Meta information:');
+      console.log(JSON.stringify(response.meta, null, 2));
     }
   } catch (error) {
     console.log('✗ Error:', error.message);
+    console.log('Stack:', error.stack);
   }
 }
 
