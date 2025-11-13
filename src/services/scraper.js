@@ -33,6 +33,36 @@ class NseScraper {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
+  // Utility: Parse date from various formats
+  parseDate(dateStr) {
+    if (!dateStr) return null;
+
+    try {
+      // Try ISO format first
+      let parsedDate = new Date(dateStr);
+      if (!isNaN(parsedDate.getTime())) {
+        return parsedDate;
+      }
+
+      // Try DD-MMM-YYYY format (e.g., "13-Nov-2024")
+      const ddMmmYyyy = dateStr.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+      if (ddMmmYyyy) {
+        const [, day, month, year] = ddMmmYyyy;
+        const monthMap = {
+          'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+          'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+        };
+        return new Date(parseInt(year), monthMap[month], parseInt(day));
+      }
+
+      // Try other common formats
+      return new Date(dateStr);
+    } catch (error) {
+      logger.warn(`Failed to parse date: ${dateStr}`);
+      return null;
+    }
+  }
+
   // Utility: Retry wrapper
   async retryOperation(operation, operationName, retries = this.config.maxRetries) {
     for (let i = 0; i < retries; i++) {
@@ -141,9 +171,16 @@ class NseScraper {
 
       for (const record of data) {
         try {
+          // Parse date properly
+          const parsedDate = this.parseDate(record.CH_TIMESTAMP);
+          if (!parsedDate) {
+            logger.warn(`Skipping record with invalid date: ${record.CH_TIMESTAMP}`);
+            continue;
+          }
+
           const historicalDoc = {
             symbol: symbol,
-            date: new Date(record.CH_TIMESTAMP),
+            date: parsedDate,
             open: record.CH_OPENING_PRICE,
             high: record.CH_TRADE_HIGH_PRICE,
             low: record.CH_TRADE_LOW_PRICE,
@@ -195,30 +232,46 @@ class NseScraper {
     try {
       logger.info(`Scraping index details for ${indexName}...`);
 
-      const data = await this.retryOperation(
-        () => this.nse.getIndexDetails(indexName),
-        `getIndexDetails(${indexName})`
+      // Use getEquityStockIndices to get all indices, then filter
+      const allIndices = await this.retryOperation(
+        () => this.nse.getEquityStockIndices(),
+        `getEquityStockIndices()`
       );
+
+      if (!allIndices || !allIndices.data) {
+        logger.warn(`No index data available`);
+        return null;
+      }
+
+      // Find the specific index
+      const indexData = allIndices.data.find(idx =>
+        idx.index && idx.index.toUpperCase() === indexName.toUpperCase()
+      );
+
+      if (!indexData) {
+        logger.warn(`Index ${indexName} not found in data`);
+        return null;
+      }
 
       const indexDoc = {
         name: indexName,
-        last: data.last,
-        open: data.open,
-        high: data.high,
-        low: data.low,
-        previousClose: data.previousClose,
-        change: data.change,
-        pChange: data.pChange,
-        yearHigh: data.yearHigh,
-        yearLow: data.yearLow,
-        peRatio: data.pe,
-        pbRatio: data.pb,
-        dividendYield: data.dy,
-        advances: data.advances,
-        declines: data.declines,
-        unchanged: data.unchanged,
-        perChange30d: data.perChange30d,
-        perChange365d: data.perChange365d,
+        last: indexData.last,
+        open: indexData.open,
+        high: indexData.high,
+        low: indexData.low,
+        previousClose: indexData.previousClose,
+        change: indexData.change,
+        pChange: indexData.pChange,
+        yearHigh: indexData.yearHigh,
+        yearLow: indexData.yearLow,
+        peRatio: indexData.pe,
+        pbRatio: indexData.pb,
+        dividendYield: indexData.dy,
+        advances: indexData.advances,
+        declines: indexData.declines,
+        unchanged: indexData.unchanged,
+        perChange30d: indexData.perChange30d,
+        perChange365d: indexData.perChange365d,
         scrapedAt: new Date()
       };
 
@@ -242,61 +295,69 @@ class NseScraper {
     try {
       logger.info('Scraping market movers...');
 
-      // Get top gainers
-      const gainers = await this.retryOperation(
-        () => this.nse.getTopGainers(),
-        'getTopGainers()'
+      // Get preopen market data which contains gainers/losers
+      const preOpenData = await this.retryOperation(
+        () => this.nse.getPreOpenMarketData(),
+        'getPreOpenMarketData()'
       );
 
-      for (const [index, stock] of gainers.slice(0, 10).entries()) {
-        await MarketMovers.create({
-          type: 'gainer',
-          symbol: stock.symbol,
-          lastPrice: stock.lastPrice,
-          change: stock.change,
-          pChange: stock.pChange,
-          previousClose: stock.previousClose,
-          open: stock.open,
-          dayHigh: stock.dayHigh,
-          dayLow: stock.dayLow,
-          totalTradedVolume: stock.totalTradedVolume,
-          totalTradedValue: stock.totalTradedValue,
-          yearHigh: stock.yearHigh,
-          yearLow: stock.yearLow,
-          rank: index + 1,
-          date: new Date()
-        });
+      if (!preOpenData || !preOpenData.data) {
+        logger.warn('No preopen market data available');
+        return;
       }
 
-      await this.sleep(this.config.requestDelay);
+      // Sort by percentage change to get gainers and losers
+      const sortedByChange = [...preOpenData.data].sort((a, b) => (b.pChange || 0) - (a.pChange || 0));
 
-      // Get top losers
-      const losers = await this.retryOperation(
-        () => this.nse.getTopLosers(),
-        'getTopLosers()'
-      );
-
-      for (const [index, stock] of losers.slice(0, 10).entries()) {
-        await MarketMovers.create({
-          type: 'loser',
-          symbol: stock.symbol,
-          lastPrice: stock.lastPrice,
-          change: stock.change,
-          pChange: stock.pChange,
-          previousClose: stock.previousClose,
-          open: stock.open,
-          dayHigh: stock.dayHigh,
-          dayLow: stock.dayLow,
-          totalTradedVolume: stock.totalTradedVolume,
-          totalTradedValue: stock.totalTradedValue,
-          yearHigh: stock.yearHigh,
-          yearLow: stock.yearLow,
-          rank: index + 1,
-          date: new Date()
-        });
+      // Top 10 gainers
+      const gainers = sortedByChange.slice(0, 10);
+      for (const [index, stock] of gainers.entries()) {
+        if (stock.pChange > 0) {
+          await MarketMovers.create({
+            type: 'gainer',
+            symbol: stock.symbol,
+            lastPrice: stock.lastPrice,
+            change: stock.change,
+            pChange: stock.pChange,
+            previousClose: stock.previousClose,
+            open: stock.open,
+            dayHigh: stock.dayHigh,
+            dayLow: stock.dayLow,
+            totalTradedVolume: stock.totalTradedVolume,
+            totalTradedValue: stock.totalTradedValue,
+            yearHigh: stock.yearHigh,
+            yearLow: stock.yearLow,
+            rank: index + 1,
+            date: new Date()
+          });
+        }
       }
 
-      logger.success(`Saved ${gainers.length + losers.length} market movers`);
+      // Top 10 losers
+      const losers = sortedByChange.slice(-10).reverse();
+      for (const [index, stock] of losers.entries()) {
+        if (stock.pChange < 0) {
+          await MarketMovers.create({
+            type: 'loser',
+            symbol: stock.symbol,
+            lastPrice: stock.lastPrice,
+            change: stock.change,
+            pChange: stock.pChange,
+            previousClose: stock.previousClose,
+            open: stock.open,
+            dayHigh: stock.dayHigh,
+            dayLow: stock.dayLow,
+            totalTradedVolume: stock.totalTradedVolume,
+            totalTradedValue: stock.totalTradedValue,
+            yearHigh: stock.yearHigh,
+            yearLow: stock.yearLow,
+            rank: index + 1,
+            date: new Date()
+          });
+        }
+      }
+
+      logger.success(`Saved market movers (gainers: ${gainers.length}, losers: ${losers.length})`);
       this.stats.success++;
       await this.sleep(this.config.requestDelay);
 
@@ -329,10 +390,10 @@ class NseScraper {
             symbol: symbol,
             series: data.series,
             purpose: action.purpose,
-            exDate: action.exDate ? new Date(action.exDate) : null,
-            recordDate: action.recordDate ? new Date(action.recordDate) : null,
-            bcStartDate: action.bcStartDate ? new Date(action.bcStartDate) : null,
-            bcEndDate: action.bcEndDate ? new Date(action.bcEndDate) : null,
+            exDate: this.parseDate(action.exDate),
+            recordDate: this.parseDate(action.recordDate),
+            bcStartDate: this.parseDate(action.bcStartDate),
+            bcEndDate: this.parseDate(action.bcEndDate),
             scrapedAt: new Date()
           };
 
