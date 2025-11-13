@@ -56,15 +56,25 @@ npm install
 
 ## 📖 Cara Menggunakan
 
-### Menjalankan Contoh
+### Menjalankan Demo
 
-Repository ini menyediakan 3 contoh implementasi:
+**PENTING:** Karena NSE API memiliki proteksi anti-bot, Anda mungkin mendapat error 403. Untuk melihat format output tanpa koneksi ke NSE:
+
+```bash
+npm start
+# atau
+npm run demo
+```
+
+Demo ini akan menampilkan contoh output dari semua fungsi API menggunakan mock data.
+
+### Menjalankan Contoh dengan Data Real
+
+Repository ini menyediakan 3 contoh implementasi dengan data live dari NSE:
 
 #### 1. Basic Usage (Penggunaan Dasar)
 ```bash
 npm run example:basic
-# atau
-npm start
 ```
 
 Contoh ini menunjukkan:
@@ -87,7 +97,7 @@ Contoh ini menunjukkan:
 
 #### 3. Stock Tracker (Portfolio Tracker)
 ```bash
-node examples/stock-tracker.js
+npm run example:tracker
 ```
 
 Contoh aplikasi sederhana untuk tracking beberapa saham favorit secara bersamaan.
@@ -97,19 +107,16 @@ Contoh aplikasi sederhana untuk tracking beberapa saham favorit secara bersamaan
 ### Import Library
 
 ```javascript
-import {
-  getAllStockSymbols,
-  getEquityDetails,
-  getEquityHistoricalData,
-  getTopGainers,
-  getTopLosers
-} from 'stock-nse-india';
+import stockNseIndia from 'stock-nse-india';
+
+const { NseIndia } = stockNseIndia;
+const nse = new NseIndia();
 ```
 
 ### 1. Mendapatkan Semua Symbol Saham
 
 ```javascript
-const symbols = await getAllStockSymbols();
+const symbols = await nse.getAllStockSymbols();
 console.log(`Total saham: ${symbols.length}`);
 console.log('Contoh:', symbols.slice(0, 10));
 ```
@@ -117,7 +124,7 @@ console.log('Contoh:', symbols.slice(0, 10));
 ### 2. Mendapatkan Detail Saham
 
 ```javascript
-const details = await getEquityDetails('RELIANCE');
+const details = await nse.getEquityDetails('RELIANCE');
 console.log({
   nama: details.info?.companyName,
   harga: details.priceInfo?.lastPrice,
@@ -130,8 +137,15 @@ console.log({
 ### 3. Mendapatkan Data Historical
 
 ```javascript
-// Rentang waktu: '1W', '1M', '3M', '6M', '1Y'
-const historical = await getEquityHistoricalData('TCS', '1M');
+// Menggunakan range tanggal
+const endDate = new Date();
+const startDate = new Date();
+startDate.setMonth(startDate.getMonth() - 1); // 1 bulan lalu
+
+const historical = await nse.getEquityHistoricalData('TCS', {
+  start: startDate,
+  end: endDate
+});
 console.log(`Data tersedia: ${historical.length} hari`);
 
 // Data terbaru
@@ -150,13 +164,13 @@ console.log({
 
 ```javascript
 // Top gainers
-const gainers = await getTopGainers();
+const gainers = await nse.getTopGainers();
 gainers.slice(0, 5).forEach(stock => {
   console.log(`${stock.symbol}: +${stock.pChange}%`);
 });
 
 // Top losers
-const losers = await getTopLosers();
+const losers = await nse.getTopLosers();
 losers.slice(0, 5).forEach(stock => {
   console.log(`${stock.symbol}: ${stock.pChange}%`);
 });
@@ -165,14 +179,12 @@ losers.slice(0, 5).forEach(stock => {
 ### 5. Informasi Index
 
 ```javascript
-import { getIndexList, getIndexDetails } from 'stock-nse-india';
-
 // Daftar semua index
-const indices = await getIndexList();
-console.log('Index tersedia:', indices.map(i => i.indexName));
+const indices = await nse.getEquityStockIndices();
+console.log('Total index:', indices.data?.length);
 
 // Detail Nifty 50
-const nifty50 = await getIndexDetails('NIFTY 50');
+const nifty50 = await nse.getIndexDetails('NIFTY 50');
 console.log({
   harga: nifty50.last,
   perubahan: nifty50.pChange,
@@ -183,35 +195,60 @@ console.log({
 
 ## 🔧 API Methods
 
+**Catatan:** Semua method dipanggil melalui instance `nse` (contoh: `nse.getEquityDetails('RELIANCE')`)
+
 ### Equity (Saham)
 
 | Method | Deskripsi | Parameter |
 |--------|-----------|-----------|
-| `getAllStockSymbols()` | Mendapatkan semua symbol saham | - |
-| `getEquityDetails(symbol)` | Detail saham tertentu | symbol: string |
-| `getEquityHistoricalData(symbol, range)` | Data historical | symbol: string, range: '1W'\|'1M'\|'3M'\|'6M'\|'1Y' |
-| `getEquityIntradayData(symbol)` | Data intraday | symbol: string |
-| `getEquityCorporateInfo(symbol)` | Corporate actions | symbol: string |
-| `getEquityOptionChain(symbol)` | Options chain | symbol: string |
+| `nse.getAllStockSymbols()` | Mendapatkan semua symbol saham | - |
+| `nse.getEquityDetails(symbol)` | Detail saham tertentu | symbol: string |
+| `nse.getEquityHistoricalData(symbol, range)` | Data historical | symbol: string, range: {start: Date, end: Date} |
+| `nse.getEquityIntradayData(symbol)` | Data intraday | symbol: string |
+| `nse.getEquityCorporateInfo(symbol)` | Corporate actions | symbol: string |
+| `nse.getEquityOptionChain(symbol)` | Options chain | symbol: string |
 
 ### Index
 
 | Method | Deskripsi | Parameter |
 |--------|-----------|-----------|
-| `getIndexList()` | Daftar semua index | - |
-| `getIndexDetails(indexName)` | Detail index tertentu | indexName: string |
-| `getIndexHistoricalData(indexName, range)` | Data historical index | indexName: string, range: string |
+| `nse.getEquityStockIndices()` | Daftar semua index | - |
+| `nse.getIndexDetails(indexName)` | Detail index tertentu | indexName: string |
+| `nse.getIndexHistoricalData(indexName, range)` | Data historical index | indexName: string, range: {start: Date, end: Date} |
 
 ### Market Movers
 
 | Method | Deskripsi |
 |--------|-----------|
-| `getTopGainers()` | Saham dengan kenaikan tertinggi |
-| `getTopLosers()` | Saham dengan penurunan tertinggi |
-| `getTopTurnoverByValue()` | Saham dengan nilai transaksi tertinggi |
-| `getTopTurnoverByVolume()` | Saham dengan volume transaksi tertinggi |
+| `nse.getTopGainers()` | Saham dengan kenaikan tertinggi |
+| `nse.getTopLosers()` | Saham dengan penurunan tertinggi |
+| `nse.getTopTurnoverByValue()` | Saham dengan nilai transaksi tertinggi |
+| `nse.getTopTurnoverByVolume()` | Saham dengan volume transaksi tertinggi |
 
 ## ❗ Troubleshooting
+
+### Error: Request failed with status code 403
+
+Ini adalah error paling umum karena NSE India memiliki proteksi anti-bot yang ketat.
+
+**Solusi:**
+1. **Gunakan Demo Mode:**
+   ```bash
+   npm run demo
+   ```
+   Demo ini menampilkan format output tanpa koneksi ke NSE.
+
+2. **Lihat Contoh Output:**
+   Cek file `examples/output-examples.md` untuk melihat struktur data lengkap.
+
+3. **Untuk Penggunaan Real:**
+   - Gunakan VPN dengan IP dari India
+   - Jalankan di server yang berada di India
+   - Implementasikan custom headers dan cookies handling
+   - Gunakan residential proxy
+
+4. **Alternative:**
+   Deploy sendiri server dari package ini di environment yang berbeda.
 
 ### Error: Cannot find module
 
@@ -220,7 +257,7 @@ Pastikan Anda sudah menjalankan `npm install` untuk menginstall semua dependenci
 ### Error: fetch failed atau Network error
 
 - Pastikan koneksi internet Anda stabil
-- NSE API mungkin sedang down atau maintenance
+- NSE API mungkin sedang down atau maintenance (jam trading: 9:15 - 15:30 IST)
 - Coba tambahkan delay antar request jika terlalu banyak request
 
 ### Data tidak lengkap atau null

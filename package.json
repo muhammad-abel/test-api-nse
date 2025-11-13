@@ -5,9 +5,11 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node examples/basic-usage.js",
+    "start": "node examples/demo-output.js",
+    "demo": "node examples/demo-output.js",
     "example:basic": "node examples/basic-usage.js",
     "example:detailed": "node examples/detailed-usage.js",
+    "example:tracker": "node examples/stock-tracker.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {

@@ -4,10 +4,10 @@
  * Contoh aplikasi sederhana untuk tracking beberapa saham favorit
  */
 
-import {
-  getEquityDetails,
-  getEquityHistoricalData
-} from 'stock-nse-india';
+import stockNseIndia from 'stock-nse-india';
+
+const { NseIndia } = stockNseIndia;
+const nse = new NseIndia();
 
 // Daftar saham yang akan di-track
 const WATCHLIST = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK'];
@@ -17,10 +17,18 @@ const WATCHLIST = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK'];
  */
 async function getStockSummary(symbol) {
   try {
-    const details = await getEquityDetails(symbol);
-    const historical = await getEquityHistoricalData(symbol, '1W');
+    const details = await nse.getEquityDetails(symbol);
 
     // Hitung perubahan mingguan
+    const endDate = new Date();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - 7); // 1 minggu lalu
+
+    const historical = await nse.getEquityHistoricalData(symbol, {
+      start: startDate,
+      end: endDate
+    });
+
     let weeklyChange = 0;
     if (historical.length >= 2) {
       const firstDay = historical[historical.length - 1];
@@ -68,7 +76,7 @@ async function trackWatchlist() {
       summaries.push(summary);
     }
     // Delay untuk menghindari rate limiting
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
   console.log('\n' + '='.repeat(80) + '\n');
