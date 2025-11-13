@@ -12,6 +12,9 @@
     "example:tracker": "node examples/stock-tracker.js",
     "example:advanced": "node examples/advanced-features.js",
     "show:all-methods": "node examples/all-available-methods.js",
+    "scraper:once": "node src/app.js once",
+    "scraper:start": "node src/app.js scheduled",
+    "query:data": "node examples/query-data.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -22,6 +25,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "dotenv": "^17.2.3",
+    "mongoose": "^8.19.3",
+    "node-cron": "^4.2.1",
     "stock-nse-india": "^1.2.2"
   }
 }
